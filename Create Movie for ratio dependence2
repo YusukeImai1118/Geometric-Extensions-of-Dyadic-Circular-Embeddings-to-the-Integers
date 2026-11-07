@@ -1,0 +1,127 @@
+
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.animation import FuncAnimation, PillowWriter, FFMpegWriter
+
+# -------------------------
+# Parameters
+# -------------------------
+N = 1000
+R = 1.0
+FPS = 10
+
+# alpha = 0.00, 0.01, ..., 1.00
+alphas = np.linspace(0.0, 1.0, 101)
+
+# -------------------------
+# Original angular placement
+# -------------------------
+def odd_part(n):
+    while n % 2 == 0:
+        n //= 2
+    return n
+
+def angle_original(n):
+    q = odd_part(n)
+    k = q.bit_length() - 1
+    return 2 * np.pi * (q - 2**k) / 2**k
+
+# -------------------------
+# Precompute coordinates
+# -------------------------
+theta1 = np.array([angle_original(n) for n in range(1, N + 1)])
+
+x1 = R * np.cos(theta1)
+y1 = R * np.sin(theta1)
+
+# -------------------------
+# Figure
+# -------------------------
+fig, ax = plt.subplots(figsize=(8, 8))
+
+ax.set_aspect("equal")
+ax.set_xlim(-1.08 * R, 1.08 * R)
+ax.set_ylim(-1.08 * R, 1.08 * R)
+ax.axis("off")
+
+# Circle boundary
+circle = plt.Circle(
+    (0, 0), R,
+    fill=False,
+    color="black",
+    linewidth=0.8
+)
+ax.add_patch(circle)
+
+# Line collection
+from matplotlib.collections import LineCollection
+
+segments = np.zeros((N, 2, 2))
+
+for i in range(N):
+    segments[i, 0] = [x1[i], y1[i]]
+
+lines = LineCollection(
+    segments,
+    colors="purple",
+    linewidths=0.25,
+    alpha=0.35
+)
+ax.add_collection(lines)
+
+title = ax.set_title("", fontsize=16, pad=15)
+
+# -------------------------
+# Animation update
+# -------------------------
+def update(frame):
+    alpha = alphas[frame]
+
+    theta2 = alpha * theta1
+
+    x2 = R * np.cos(theta2)
+    y2 = R * np.sin(theta2)
+
+    segments = np.stack(
+        [
+            np.column_stack([x1, y1]),
+            np.column_stack([x2, y2])
+        ],
+        axis=1
+    )
+
+    lines.set_segments(segments)
+    title.set_text(
+        rf"Angular Scaling: $\alpha={alpha:.2f}$  (N={N})"
+    )
+
+    return lines, title
+
+# -------------------------
+# Create animation
+# -------------------------
+ani = FuncAnimation(
+    fig,
+    update,
+    frames=len(alphas),
+    interval=1000 / FPS,
+    blit=True
+)
+
+# Save as GIF
+ani.save(
+    "angular_scaling.gif",
+    writer=PillowWriter(fps=FPS),
+    dpi=150
+)
+
+# Save as MP4 (requires FFmpeg)
+# ani.save(
+#     "angular_scaling.mp4",
+#     writer=FFMpegWriter(fps=FPS, bitrate=3000),
+#     dpi=150
+# )
+
+plt.close(fig)
+
+print("Saved: angular_scaling.gif")
