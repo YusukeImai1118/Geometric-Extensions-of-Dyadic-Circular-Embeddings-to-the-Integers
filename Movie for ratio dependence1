@@ -1,0 +1,375 @@
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.collections import LineCollection
+from matplotlib.patches import Circle, Patch
+from pathlib import Path
+from PIL import Image
+
+# ============================================================
+# Parameters
+# ============================================================
+
+N = 1023
+R = float(N)
+
+FRAMES = 101
+FPS = 12
+
+OUT = Path("integer_geometry_figures")
+OUT.mkdir(exist_ok=True)
+
+# Original color order (unchanged)
+COLORS = plt.cm.turbo(np.linspace(0, 1, 11))
+
+
+# ============================================================
+# Integer -> original angle
+# ============================================================
+
+def angle_original(n):
+
+    q = abs(int(n))
+    k = q.bit_length() - 1
+
+    return 2 * np.pi * (q - 2**k) / (2**k)
+
+
+# ============================================================
+# Prepare integer data
+# ============================================================
+
+# Negative integers first, followed by positive integers
+all_n = np.arange(-N, N + 1)
+all_n = all_n[all_n != 0]
+
+abs_n = np.abs(all_n)
+
+base_angles = np.array([
+    angle_original(n) for n in all_n
+])
+
+# Dyadic interval indices
+k_values = np.array([
+    int(n).bit_length() - 1 for n in abs_n
+])
+
+# Fixed colors for all integers
+line_colors = COLORS[k_values]
+
+# Signs for antipodal placement
+signs = np.sign(all_n)
+
+# Number-line endpoints
+Q = np.column_stack([
+    all_n.astype(float),
+    np.zeros(len(all_n))
+])
+
+
+# ============================================================
+# Figure setup
+# ============================================================
+
+fig, ax = plt.subplots(
+    figsize=(11, 9),
+    facecolor="white"
+)
+
+ax.set_facecolor("white")
+ax.set_aspect("equal")
+ax.set_xlim(-1.1 * R, 1.1 * R)
+ax.set_ylim(-1.1 * R, 1.1 * R)
+ax.axis("off")
+
+
+# ============================================================
+# Initial line segments
+# ============================================================
+
+P_initial = np.column_stack([
+    R * signs,
+    np.zeros(len(all_n))
+])
+
+segments_initial = np.stack([
+    P_initial,
+    Q
+], axis=1)
+
+line_collection = LineCollection(
+    segments_initial,
+    colors=line_colors,
+    linewidths=0.45,
+    alpha=0.35,
+    zorder=2
+)
+
+ax.add_collection(line_collection)
+
+
+# ============================================================
+# Circle and number line
+# ============================================================
+
+circle = Circle(
+    (0, 0),
+    R,
+    fill=False,
+    edgecolor="#000000",
+    linewidth=1.5,
+    zorder=20
+)
+
+ax.add_patch(circle)
+
+ax.plot(
+    [-R, R],
+    [0, 0],
+    color="#000000",
+    linewidth=1.2,
+    zorder=20
+)
+
+
+# ============================================================
+# Legend
+# ============================================================
+
+legend_elements = []
+
+for k in range(10):
+
+    start = 2**k
+    end = min(2**(k + 1) - 1, N)
+
+    legend_elements.append(
+        Patch(
+            facecolor=COLORS[k],
+            label=f"{start}" if start == end else f"{start}-{end}"
+        )
+    )
+
+ax.legend(
+    handles=legend_elements,
+    loc="center left",
+    bbox_to_anchor=(1.02, 0.5),
+    fontsize=9,
+    ncol=1,
+    framealpha=0.9
+)
+
+
+# ============================================================
+# Title
+# ============================================================
+
+title = ax.set_title(
+    rf"Circle-number line correspondence "
+    rf"($N={N}$), $\alpha=0.00$",
+    fontsize=14,
+    pad=14,
+    color="#000000"
+)
+
+fig.subplots_adjust(
+    left=0.05,
+    right=0.78,
+    bottom=0.05,
+    top=0.92
+)
+
+
+# ============================================================
+# Animation update
+# ============================================================
+
+def update(frame):
+
+    alpha = frame / (FRAMES - 1)
+
+    # Angular scaling
+    theta = alpha * base_angles
+
+    # Circle positions
+    P = np.column_stack([
+        R * signs * np.cos(theta),
+        R * signs * np.sin(theta)
+    ])
+
+    # Line segments
+    segments = np.stack([
+        P,
+        Q
+    ], axis=1)
+
+    # Drawing order:
+    # alpha <= 0.5 : negative to positive
+    # alpha > 0.5  : positive to negative
+    if alpha > 0.5:
+        segments = segments[::-1]
+        colors = line_colors[::-1]
+    else:
+        colors = line_colors
+
+    line_collection.set_segments(segments)
+    line_collection.set_color(colors)
+
+    title.set_text(
+        rf"Circle-number line correspondence "
+        rf"($N={N}$), $\alpha={alpha:.2f}$"
+    )
+
+    title.set_color("#000000")
+
+    return line_collection, title
+
+
+# ============================================================
+# Render all frames
+# ============================================================
+
+frames = []
+
+for frame in range(FRAMES):
+
+    update(frame)
+    fig.canvas.draw()
+
+    rgba = np.asarray(
+        fig.canvas.buffer_rgba()
+    ).copy()
+
+    img = Image.fromarray(rgba).convert("RGB")
+    frames.append(img)
+
+plt.close(fig)
+
+
+# ============================================================
+# Create global palette
+# Reserve pure black and white explicitly
+# ============================================================
+
+thumb_width = 160
+thumb_height = int(
+    frames[0].height * thumb_width / frames[0].width
+)
+
+columns = 10
+rows = int(np.ceil(len(frames) / columns))
+
+palette_sheet = Image.new(
+    "RGB",
+    (columns * thumb_width, rows * thumb_height),
+    "white"
+)
+
+for i, img in enumerate(frames):
+
+    thumb = img.resize(
+        (thumb_width, thumb_height),
+        Image.Resampling.LANCZOS
+    )
+
+    x = (i % columns) * thumb_width
+    y = (i // columns) * thumb_height
+
+    palette_sheet.paste(thumb, (x, y))
+
+
+# Add dedicated color swatches
+swatch_width = 100
+swatch_height = 100
+
+swatches = Image.new(
+    "RGB",
+    (swatch_width * 12, swatch_height),
+    "white"
+)
+
+swatch_colors = [
+    (0, 0, 0),
+    (255, 255, 255)
+]
+
+for color in COLORS[:10]:
+
+    rgb = tuple(
+        int(round(v * 255)) for v in color[:3]
+    )
+
+    swatch_colors.append(rgb)
+
+for i, rgb in enumerate(swatch_colors):
+
+    swatch = Image.new(
+        "RGB",
+        (swatch_width, swatch_height),
+        rgb
+    )
+
+    swatches.paste(
+        swatch,
+        (i * swatch_width, 0)
+    )
+
+
+# Combine thumbnails and swatches
+combined_width = max(
+    palette_sheet.width,
+    swatches.width
+)
+
+combined = Image.new(
+    "RGB",
+    (
+        combined_width,
+        palette_sheet.height + swatches.height
+    ),
+    "white"
+)
+
+combined.paste(palette_sheet, (0, 0))
+combined.paste(swatches, (0, palette_sheet.height))
+
+
+# Generate one global palette
+global_palette = combined.quantize(
+    colors=256,
+    method=Image.Quantize.MEDIANCUT
+)
+
+
+# ============================================================
+# Convert all frames using the same palette
+# ============================================================
+
+indexed_frames = []
+
+for img in frames:
+
+    indexed = img.quantize(
+        palette=global_palette,
+        dither=Image.Dither.NONE
+    )
+
+    indexed_frames.append(indexed)
+
+
+# ============================================================
+# Save GIF
+# ============================================================
+
+gif_path = OUT / "angular_scaling_alpha_0_to_1.gif"
+
+indexed_frames[0].save(
+    gif_path,
+    save_all=True,
+    append_images=indexed_frames[1:],
+    duration=int(1000 / FPS),
+    loop=0,
+    optimize=False,
+    disposal=2
+)
+
+print("Animation saved:", gif_path.resolve())
