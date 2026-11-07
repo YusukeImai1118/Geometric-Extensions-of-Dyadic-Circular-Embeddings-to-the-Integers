@@ -1,0 +1,135 @@
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.patches import Circle
+from pathlib import Path
+
+# ============================================================
+# Parameters
+# ============================================================
+
+N = 1023
+R = float(N)
+
+OUT = Path("integer_geometry_figures")
+OUT.mkdir(exist_ok=True)
+
+
+# ============================================================
+# Integer -> angle
+# ============================================================
+
+def angle(n):
+    if n == 0:
+        return 0.0
+
+    q = abs(int(n))
+    k = q.bit_length() - 1
+
+    theta = np.pi * (q - 2**k) / (2**k)
+
+    if n < 0:
+        theta += np.pi
+
+    return theta
+
+
+def point(n, radius=R):
+    theta = angle(n)
+    return np.array([
+        radius * np.cos(theta),
+        radius * np.sin(theta)
+    ])
+
+
+# ============================================================
+# Circle setup
+# ============================================================
+
+def setup_circle(ax, radius=R):
+    circle = Circle(
+        (0, 0),
+        radius,
+        fill=False,
+        color="black",
+        linewidth=1.2
+    )
+
+    ax.add_patch(circle)
+    ax.set_aspect("equal")
+    ax.set_xlim(-1.1 * radius, 1.1 * radius)
+    ax.set_ylim(-1.1 * radius, 1.1 * radius)
+    ax.axis("off")
+
+
+# ============================================================
+# Figure 3
+# Circle-number line correspondence
+# ============================================================
+
+fig, ax = plt.subplots(figsize=(10, 10))
+
+setup_circle(ax, R)
+
+# Number line
+ax.plot(
+    [-R, R],
+    [0, 0],
+    color="black",
+    linewidth=1.0,
+    zorder=1
+)
+
+# Draw segments
+for n in sorted(
+    range(-N, N + 1),
+    key=lambda n: abs(n),
+    reverse=True
+):
+    if n == 0:
+        continue
+
+    p = point(n, R)
+    q = np.array([n, 0.0])
+
+    ax.plot(
+        [p[0], q[0]],
+        [p[1], q[1]],
+        color="black",
+        alpha=0.5,
+        linewidth=0.7,
+        zorder=2
+    )
+
+
+# ============================================================
+# Title
+# ============================================================
+
+ax.set_title(
+    rf"Circle-number line correspondence ($N={N}$)",
+    fontsize=14
+)
+
+fig.tight_layout()
+
+
+# ============================================================
+# Save
+# ============================================================
+
+fig.savefig(
+    OUT / "Figure3_monochrome.png",
+    dpi=300,
+    bbox_inches="tight"
+)
+
+fig.savefig(
+    OUT / "Figure3_monochrome.eps",
+    format="eps",
+    bbox_inches="tight"
+)
+
+plt.show()
+
+print("Figure 3 saved.")
+print("Output directory:", OUT.resolve())
